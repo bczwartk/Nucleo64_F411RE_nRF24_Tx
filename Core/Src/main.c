@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "NRF24.h"
 /* USER CODE END Includes */
 
@@ -39,7 +40,11 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 SPI_HandleTypeDef hspi2;
+
+TIM_HandleTypeDef htim1;
 
 UART_HandleTypeDef huart2;
 
@@ -52,6 +57,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -60,6 +67,41 @@ static void MX_SPI2_Init(void);
 /* USER CODE BEGIN 0 */
 uint64_t txPipeAddress = 0x2109BC1971;
 char txData[32] = "Hello World!";
+
+// delay in microseconds - assume TIM1 is set to 1MHz
+void delay_us(uint32_t delay)
+{
+	// see: https://controllerstech.com/create-1-microsecond-delay-stm32/
+	__HAL_TIM_SET_COUNTER(& htim1, 0);
+	while (__HAL_TIM_GET_COUNTER(& htim1) < delay)  /* noop */ ;
+}
+
+
+void nrf24_initialize(void)
+{
+	NRF24_begin(CSN_GPIO_Port, CSN_Pin, CE_Pin, hspi2);
+	nrf24_DebugUART_Init(huart2);
+
+	// transmit w/o ACK
+	NRF24_stopListening();
+	NRF24_openWritingPipe(txPipeAddress);
+	NRF24_setAutoAck(false);
+	NRF24_setChannel(52);
+	NRF24_setPayloadSize(32);
+	printRadioSettings();
+	HAL_UART_Transmit(&huart2, (uint8_t *)"Tx ready\r\n", strlen("Tx ready\r\n"), 10);
+}
+
+void nrf24_transmit_data(void)
+{
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+	HAL_Delay(100);
+	if (NRF24_write(txData, 32)) {
+	    HAL_UART_Transmit(&huart2, (uint8_t *)"Tx success\r\n", strlen("Tx success\r\n"), 10);
+	}
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+	HAL_Delay(2900);
+}
 /* USER CODE END 0 */
 
 /**
@@ -92,20 +134,11 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_SPI2_Init();
+  MX_I2C1_Init();
+  MX_TIM1_Init();
 
   /* USER CODE BEGIN 2 */
-  NRF24_begin(CSN_GPIO_Port, CSN_Pin, CE_Pin, hspi2);
-  nrf24_DebugUART_Init(huart2);
-  // printRadioSettings();
-
-  // transmit w/o ACK
-  NRF24_stopListening();
-  NRF24_openWritingPipe(txPipeAddress);
-  NRF24_setAutoAck(false);
-  NRF24_setChannel(52);
-  NRF24_setPayloadSize(32);
-  printRadioSettings();
-  HAL_UART_Transmit(&huart2, (uint8_t *)"Tx ready\r\n", strlen("Tx ready\r\n"), 10);
+  // nrf24_initialize();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -113,17 +146,14 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-		HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-		HAL_Delay(100);
-
-		if (NRF24_write(txData, 32)) {
-			HAL_UART_Transmit(&huart2, (uint8_t *)"Tx success\r\n", strlen("Tx success\r\n"), 10);
-		}
-
-		HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-		HAL_Delay(2900);
-
     /* USER CODE BEGIN 3 */
+	// transmit_data();
+	  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+	  HAL_Delay(50);
+	  // delay_us(10000000);
+	  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+	  HAL_Delay(50);
+	  // delay_us(10000000);
   }
   /* USER CODE END 3 */
 }
@@ -173,6 +203,40 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief SPI2 Initialization Function
   * @param None
   * @retval None
@@ -207,6 +271,52 @@ static void MX_SPI2_Init(void)
   /* USER CODE BEGIN SPI2_Init 2 */
 
   /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 83;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
 
 }
 
